@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Trophy, Users, TrendingUp, Zap, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { api } from '@/lib/api'; // ✅ Import your existing API utility
+import { api } from '@/lib/api';
 
 export default function DashboardHome() {
-  const { user } = useAuth(); 
+  const { user } = useAuth();
   const [competitions, setCompetitions] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [activePositionsCount, setActivePositionsCount] = useState(0);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -20,34 +21,40 @@ export default function DashboardHome() {
         setError(false);
         setLoading(true);
 
-        // ✅ Using Axios (api) handles the base URL (3001) and Token automatically
-        // We use Promise.allSettled so if one fails (like an empty leaderboard), the others still load
         const results = await Promise.allSettled([
           api.get('/competitions'),
           api.get('/competitions/1/leaderboard'),
-          api.get('/positions/me')
+          api.get('/positions/me'),
+          api.get('/wallet/me'),
         ]);
 
-        // Process Competitions
         if (results[0].status === 'fulfilled') {
-          const compData = results[0].value.data || results[0].value;
-          setCompetitions(Array.isArray(compData) ? compData : []);
+          const compData: any = results[0].value;
+          const arr = compData?.data ?? compData;
+          setCompetitions(Array.isArray(arr) ? arr : []);
         }
 
-        // Process Leaderboard
         if (results[1].status === 'fulfilled') {
-          const leaderData = results[1].value.data || results[1].value;
-          setLeaderboard(Array.isArray(leaderData) ? leaderData : []);
+          const leaderData: any = results[1].value;
+          const arr = leaderData?.data ?? leaderData;
+          setLeaderboard(Array.isArray(arr) ? arr : []);
         }
 
-        // Process Positions
         if (results[2].status === 'fulfilled') {
-          const posData = results[2].value.data || results[2].value;
-          setActivePositionsCount(Array.isArray(posData) ? posData.length : 0);
+          const posData: any = results[2].value;
+          const arr = posData?.data ?? posData;
+          setActivePositionsCount(Array.isArray(arr) ? arr.length : 0);
         }
 
+        if (results[3].status === 'fulfilled') {
+          const walletData: any = results[3].value;
+          const w = walletData?.data ?? walletData;
+          if (w && typeof w.availableBalance !== 'undefined') {
+            setWalletBalance(Number(w.availableBalance));
+          }
+        }
       } catch (err) {
-        console.error("Dashboard fetch error:", err);
+        console.error('Dashboard fetch error:', err);
         setError(true);
       } finally {
         setLoading(false);
@@ -65,7 +72,7 @@ export default function DashboardHome() {
         <p className="text-white/40 text-center max-w-xs text-[10px] uppercase font-mono">
           Unable to synchronize with the trading terminal.
         </p>
-        <button 
+        <button
           onClick={() => window.location.reload()}
           className="bg-orange-500 hover:bg-orange-400 text-white px-8 py-3 rounded-2xl font-black uppercase text-[10px] italic"
         >
@@ -74,6 +81,9 @@ export default function DashboardHome() {
       </div>
     );
   }
+
+  const formattedBalance =
+    walletBalance === null ? '—' : Number(walletBalance).toLocaleString();
 
   return (
     <div className="max-w-7xl mx-auto space-y-12 pb-20 animate-in fade-in duration-700">
@@ -95,10 +105,27 @@ export default function DashboardHome() {
         </div>
       </header>
 
+      {/* Real stats — no more hardcoded 45,200 / #1,204 / 68.2% */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Tokens" value={loading ? "..." : "45,200"} subValue="TT Balance" isPositive icon={<Zap size={18} className="text-orange-400" />} />
-        <StatCard title="Global Rank" value="#1,204" subValue="Top 5%" icon={<Trophy size={18} className="text-blue-400" />} />
-        <StatCard title="Win Ratio" value="68.2%" subValue="Profitable" icon={<TrendingUp size={18} className="text-green-400" />} />
+        <StatCard
+          title="Tokens"
+          value={loading ? '...' : formattedBalance}
+          subValue="TT Balance"
+          isPositive={walletBalance !== null && walletBalance > 0}
+          icon={<Zap size={18} className="text-orange-400" />}
+        />
+        <StatCard
+          title="Global Rank"
+          value="—"
+          subValue="Coming soon"
+          icon={<Trophy size={18} className="text-blue-400" />}
+        />
+        <StatCard
+          title="Win Ratio"
+          value="—"
+          subValue="Coming soon"
+          icon={<TrendingUp size={18} className="text-green-400" />}
+        />
       </div>
 
       <div className="grid grid-cols-12 gap-8">
@@ -110,20 +137,29 @@ export default function DashboardHome() {
                 <Loader2 className="animate-spin text-orange-500" size={32} />
               </div>
             ) : competitions.length > 0 ? (
-              competitions.map((comp: any) => (
-                <Link key={comp.id} href={`/dashboard/competitions/${comp.id}/trade/1`}>
-                    <CompetitionItem 
-                        name={comp.name} 
-                        prize={`${Number(comp.prizePool).toLocaleString()} TT`} 
-                        players={`${Math.floor(Math.random() * 20)}/${comp.maxParticipants || 100}`} 
-                        trend={comp.status?.toUpperCase() || 'ACTIVE'} 
+              competitions.map((comp: any) => {
+                // ✅ Use the competition's real first allowed asset, not the hardcoded "1"
+                const firstAssetId = comp.allowedAssets?.[0]?.id;
+                const href = firstAssetId
+                  ? `/dashboard/competitions/${comp.id}/trade/${firstAssetId}`
+                  : `/dashboard/competitions/${comp.id}`;
+                // ✅ Real participant count, not Math.random()
+                const participantCount = comp.participants?.length ?? 0;
+                return (
+                  <Link key={comp.id} href={href}>
+                    <CompetitionItem
+                      name={comp.name}
+                      prize={`${Number(comp.prizePool).toLocaleString()} TT`}
+                      players={`${participantCount}/${comp.maxParticipants || 100}`}
+                      trend={comp.status?.toUpperCase() || 'ACTIVE'}
                     />
-                </Link>
-              ))
+                  </Link>
+                );
+              })
             ) : (
               <div className="text-white/20 italic text-center py-16 border border-dashed border-white/10 rounded-[2rem]">
                 <p className="text-sm">No active competitions found.</p>
-                <p className="text-[10px] uppercase font-black tracking-widest mt-2">Check the admin panel to seed data</p>
+                <p className="text-[10px] uppercase font-black tracking-widest mt-2">Check back soon</p>
               </div>
             )}
           </div>
@@ -138,14 +174,17 @@ export default function DashboardHome() {
                   <span className="text-white/10 font-black italic text-xl w-8">{(i + 1).toString().padStart(2, '0')}</span>
                   <span className="flex-1 px-4 font-bold text-white/80 truncate">{entry.userName}</span>
                   <div className="text-right">
-                     <p className={`font-mono font-black ${entry.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {entry.pnl >= 0 ? '+' : ''}{entry.pnl}%
-                     </p>
+                    <p className={`font-mono font-black ${entry.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {entry.pnl >= 0 ? '+' : ''}
+                      {entry.pnl}%
+                    </p>
                   </div>
                 </div>
               ))
             ) : (
-                <div className="py-10 text-center"><p className="text-white/20 text-[10px] uppercase font-black tracking-widest">Rankings Pending</p></div>
+              <div className="py-10 text-center">
+                <p className="text-white/20 text-[10px] uppercase font-black tracking-widest">Rankings Pending</p>
+              </div>
             )}
           </div>
         </section>
@@ -177,7 +216,9 @@ function CompetitionItem({ name, prize, players, trend }: any) {
         <div>
           <h3 className="font-black text-xl tracking-tight italic uppercase text-white/90 group-hover:text-white">{name}</h3>
           <div className="flex items-center gap-3 mt-1.5">
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/20 flex items-center gap-1.5"><Users size={12}/> {players}</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-white/20 flex items-center gap-1.5">
+              <Users size={12} /> {players}
+            </span>
             <span className="text-[9px] font-black uppercase tracking-widest text-orange-400/80">{trend}</span>
           </div>
         </div>
