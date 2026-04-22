@@ -1,11 +1,3 @@
-# Patch: `src/app/auth/login/page.tsx`
-
-Replace the entire file with this version. Changes:
-- Sends the existing `deviceToken` from localStorage with the login request
-- Handles the `requires2FA` response by storing the `tempToken` and redirecting to `/auth/2fa`
-- If no 2FA required (trusted device), flow is unchanged
-
-```tsx
 'use client';
 
 import { useState } from 'react';
@@ -71,4 +63,3 @@ export default function LoginPage() {
     </div>
   );
 }
-```
