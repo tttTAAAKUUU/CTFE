@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, Check, X, Shield, User as UserIcon, Lock, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import TwoFactorModal from '@/components/TwoFactorModal';
 
 export default function ProfilePage() {
   const { user, loading: authLoading, refreshUser } = useAuth();
@@ -21,6 +22,10 @@ export default function ProfilePage() {
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
+  // 2FA modals
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+
   useEffect(() => {
     if (user) {
       setEmail(user.email || '');
@@ -28,24 +33,53 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  const handleProfileSave = async (e: React.FormEvent) => {
+  // ─── Profile save ─────────────────────────────
+  const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setProfileMsg(null);
+
+    const emailChanged = user && email !== user.email;
+    const userNameChanged = user && userName !== user.userName;
+
+    if (!emailChanged && !userNameChanged) {
+      setProfileMsg({ type: 'err', text: 'No changes to save' });
+      return;
+    }
+
+    if (emailChanged) {
+      // Open the 2FA modal; actual save happens inside handleConfirmEmailChange
+      setEmailModalOpen(true);
+      return;
+    }
+
+    // Username-only change → save directly, no code needed
+    saveProfile();
+  };
+
+  const saveProfile = async (code?: string) => {
     setProfileSaving(true);
     try {
-      // Backend UpdateUserDto accepts { email?, username? }
-      await api.patch('/users/me', { email, username: userName });
+      const payload: any = { email, username: userName };
+      if (code) payload.code = code;
+      await api.patch('/users/me', payload);
       await refreshUser();
       setProfileMsg({ type: 'ok', text: 'Profile updated' });
+      setEmailModalOpen(false);
     } catch (err: any) {
       const text = err?.response?.data?.message || 'Failed to update profile';
       setProfileMsg({ type: 'err', text: Array.isArray(text) ? text.join(', ') : text });
+      throw err; // surface to modal
     } finally {
       setProfileSaving(false);
     }
   };
 
-  const handlePasswordSave = async (e: React.FormEvent) => {
+  const handleConfirmEmailChange = async (code: string) => {
+    await saveProfile(code);
+  };
+
+  // ─── Password change ──────────────────────────
+  const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPwMsg(null);
 
@@ -57,17 +91,26 @@ export default function ProfilePage() {
       setPwMsg({ type: 'err', text: 'New password must be at least 8 characters' });
       return;
     }
+    setPasswordModalOpen(true);
+  };
 
+  const handleConfirmPasswordChange = async (code: string) => {
     setPwSaving(true);
     try {
-      await api.patch('/users/me/password', { oldPassword, newPassword });
+      await api.patch('/users/me/password', {
+        oldPassword,
+        newPassword,
+        code,
+      });
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setPwMsg({ type: 'ok', text: 'Password updated' });
+      setPasswordModalOpen(false);
     } catch (err: any) {
       const text = err?.response?.data?.message || 'Failed to update password';
       setPwMsg({ type: 'err', text: Array.isArray(text) ? text.join(', ') : text });
+      throw err;
     } finally {
       setPwSaving(false);
     }
@@ -81,7 +124,6 @@ export default function ProfilePage() {
     );
   }
 
-  // KYC pill styling
   const kycColors: Record<string, string> = {
     approved: 'bg-green-500/10 border-green-500/40 text-green-400',
     pending: 'bg-yellow-500/10 border-yellow-500/40 text-yellow-400',
@@ -96,7 +138,7 @@ export default function ProfilePage() {
         <h1 className="text-6xl font-black italic uppercase text-white tracking-tighter">Profile</h1>
       </header>
 
-      {/* Verification status card */}
+      {/* Verification */}
       <div className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8">
         <div className="flex items-center gap-3 mb-6">
           <Shield size={20} className="text-orange-500" />
@@ -131,7 +173,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Account info form */}
-      <form onSubmit={handleProfileSave} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 space-y-6">
+      <form onSubmit={handleProfileSubmit} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 space-y-6">
         <div className="flex items-center gap-3">
           <UserIcon size={20} className="text-orange-500" />
           <h2 className="text-xl font-black italic uppercase">Account Info</h2>
@@ -150,7 +192,9 @@ export default function ProfilePage() {
             />
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-white/40 block mb-2">Email</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-white/40 block mb-2">
+              Email <span className="text-white/20 normal-case italic ml-1">(requires code)</span>
+            </label>
             <input
               type="email"
               value={email}
@@ -182,10 +226,12 @@ export default function ProfilePage() {
       </form>
 
       {/* Password form */}
-      <form onSubmit={handlePasswordSave} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 space-y-6">
+      <form onSubmit={handlePasswordSubmit} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 space-y-6">
         <div className="flex items-center gap-3">
           <Lock size={20} className="text-orange-500" />
-          <h2 className="text-xl font-black italic uppercase">Change Password</h2>
+          <h2 className="text-xl font-black italic uppercase">
+            Change Password <span className="text-white/20 text-xs normal-case italic ml-2">(requires code)</span>
+          </h2>
         </div>
 
         <div className="space-y-4">
@@ -244,6 +290,20 @@ export default function ProfilePage() {
           </button>
         </div>
       </form>
+
+      {/* 2FA Modals */}
+      <TwoFactorModal
+        open={emailModalOpen}
+        action="change-email"
+        onConfirm={handleConfirmEmailChange}
+        onClose={() => setEmailModalOpen(false)}
+      />
+      <TwoFactorModal
+        open={passwordModalOpen}
+        action="change-password"
+        onConfirm={handleConfirmPasswordChange}
+        onClose={() => setPasswordModalOpen(false)}
+      />
     </div>
   );
 }
