@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AuthInput from '@/components/auth/AuthInput';
 import AuthButton from '@/components/auth/AuthButton';
 import { getDeviceToken } from '@/lib/device';
+import { useAuth } from '@/context/AuthContext';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -12,6 +14,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { login } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,16 +38,13 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.message || 'Login failed');
 
       if (data.requires2FA) {
-        // New/untrusted device → go to code-entry screen
         sessionStorage.setItem('2fa_temp_token', data.tempToken);
         sessionStorage.setItem('2fa_email', email);
         router.push('/auth/2fa');
         return;
       }
 
-      // Trusted device → straight into the app
-      localStorage.setItem('token', data.access_token);
-      router.push('/dashboard');
+      await login(data.access_token);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -57,6 +57,14 @@ export default function LoginPage() {
       <form onSubmit={handleLogin} className="space-y-5">
         <AuthInput label="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <AuthInput label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <div className="flex justify-end">
+          <Link
+            href="/auth/forgot-password"
+            className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white transition"
+          >
+            Forgot password?
+          </Link>
+        </div>
         {error && <p className="text-red-500 text-xs font-bold uppercase tracking-tighter">{error}</p>}
         <AuthButton text={loading ? 'Signing in...' : 'Sign In'} disabled={loading} />
       </form>

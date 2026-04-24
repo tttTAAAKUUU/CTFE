@@ -9,21 +9,10 @@ type Action = 'change-password' | 'change-email';
 interface TwoFactorModalProps {
   open: boolean;
   action: Action;
-  /** Called when user enters a valid code. Parent passes it into the final API call. */
   onConfirm: (code: string) => Promise<void>;
   onClose: () => void;
 }
 
-/**
- * Reusable 2FA code modal for sensitive actions.
- *
- * Flow:
- *  1. Modal opens → auto-triggers /auth/2fa/request-action-code (email sent)
- *  2. User enters 6-digit code from email
- *  3. Clicks confirm → parent's onConfirm(code) is invoked
- *  4. Parent executes the protected action (change password/email) with the code
- *  5. On success, modal closes
- */
 export default function TwoFactorModal({
   open,
   action,
@@ -39,13 +28,11 @@ export default function TwoFactorModal({
 
   const actionLabel = action === 'change-password' ? 'change your password' : 'change your email';
 
-  // Auto-send code when modal opens
   useEffect(() => {
     if (open && !hasSent) {
       sendCode();
     }
     if (!open) {
-      // Reset on close
       setCode('');
       setError('');
       setInfo('');
@@ -78,7 +65,6 @@ export default function TwoFactorModal({
     setError('');
     try {
       await onConfirm(code);
-      // Parent handles closing on success
     } catch (err: any) {
       setError(err?.response?.data?.message || err.message || 'Invalid code');
     } finally {
@@ -104,7 +90,9 @@ export default function TwoFactorModal({
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Verification</p>
-            <h2 className="text-xl font-black italic uppercase text-white">Confirm {action === 'change-password' ? 'Password Change' : 'Email Change'}</h2>
+            <h2 className="text-xl font-black italic uppercase text-white">
+              Confirm {action === 'change-password' ? 'Password Change' : 'Email Change'}
+            </h2>
           </div>
         </div>
 

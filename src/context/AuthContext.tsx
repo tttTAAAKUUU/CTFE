@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
 export interface User {
@@ -19,7 +19,7 @@ interface AuthContextType {
   loading: boolean;
   login: (token: string) => Promise<void>;
   logout: () => void;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -27,43 +27,28 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const pathname = usePathname();
   const router = useRouter();
 
-  function redirectBasedOnUser(user: User) {
-    // Prevent redirect loops on auth pages
-    if (pathname.startsWith('/auth/verify-email') || pathname.startsWith('/login')) return;
-
-    if (!user.emailVerified) {
-      router.replace('/auth/verify-email');
-      return;
-    }
-
-    if (!user.kycVerified && pathname !== '/kyc') {
-      router.replace('/kyc');
-      return;
-    }
-  }
-
-  async function refreshUser() {
+  async function refreshUser(): Promise<User | null> {
     const token = localStorage.getItem('token');
     if (!token) {
       setLoading(false);
-      return;
+      return null;
     }
 
     try {
-      // Because our api.ts interceptor returns response.data, 
+      // Because our api.ts interceptor returns response.data,
       // 'res' here is the User object itself.
       const res = await api.get<User>('/users/me');
       const userData = (res as any).data || res;
-      
+
       setUser(userData);
-      redirectBasedOnUser(userData);
+      return userData;
     } catch (error) {
       console.error("Auth Refresh Failed:", error);
       setUser(null);
       localStorage.removeItem('token');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -72,7 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function login(token: string) {
     localStorage.setItem('token', token);
     // The api.ts interceptor will now pick this up automatically
-    await refreshUser();
+    const u = await refreshUser();
+    if (!u) return;
     router.push('/dashboard');
   }
 

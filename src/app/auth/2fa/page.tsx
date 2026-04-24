@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import AuthInput from '@/components/auth/AuthInput';
 import AuthButton from '@/components/auth/AuthButton';
 import { setDeviceToken } from '@/lib/device';
+import { useAuth } from '@/context/AuthContext';
 
 export default function TwoFactorPage() {
   const [code, setCode] = useState('');
@@ -15,6 +16,7 @@ export default function TwoFactorPage() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const router = useRouter();
+  const { login } = useAuth();
 
   useEffect(() => {
     const t = sessionStorage.getItem('2fa_temp_token');
@@ -42,15 +44,12 @@ export default function TwoFactorPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Verification failed');
 
-      // Persist JWT + trusted device token
-      localStorage.setItem('token', data.access_token);
       if (data.deviceToken) setDeviceToken(data.deviceToken);
 
-      // Clean up temp session state
       sessionStorage.removeItem('2fa_temp_token');
       sessionStorage.removeItem('2fa_email');
 
-      router.push('/dashboard');
+      await login(data.access_token);
     } catch (err: any) {
       setError(err.message);
     } finally {

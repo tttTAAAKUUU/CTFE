@@ -47,12 +47,10 @@ export default function ProfilePage() {
     }
 
     if (emailChanged) {
-      // Open the 2FA modal; actual save happens inside handleConfirmEmailChange
       setEmailModalOpen(true);
       return;
     }
 
-    // Username-only change → save directly, no code needed
     saveProfile();
   };
 
@@ -68,7 +66,7 @@ export default function ProfilePage() {
     } catch (err: any) {
       const text = err?.response?.data?.message || 'Failed to update profile';
       setProfileMsg({ type: 'err', text: Array.isArray(text) ? text.join(', ') : text });
-      throw err; // surface to modal
+      throw err;
     } finally {
       setProfileSaving(false);
     }
